@@ -97,33 +97,62 @@ class App(ctk.CTk):
         self.list_frame = ctk.CTkScrollableFrame(self.right_container, fg_color="gray15")
         self.list_frame.grid(row=1, column=0, sticky="nsew")
 
+        # 시작 후 0.1초 뒤 저장된 경로 확인
+        self.after(100, self.try_find_PlayList)
+
+    # --- 초기 로딩 및 경로 검사 ---
+    def try_find_PlayList(self):
+        filename = "PlatList.txt"
+        if os.path.exists(filename):
+            try:
+                with open(filename, "r", encoding="utf-8") as r:
+                    saved_path = r.read().strip()
+                
+                # 경로가 실제로 존재하는지 검사
+                if saved_path and os.path.isdir(saved_path):
+                    self.Playlist_folder = saved_path
+                    print(f"이전 경로 로드 성공: {saved_path}")
+                    self.update_music_list()
+                else:
+                    print("저장된 경로가 유효하지 않습니다.")
+            except Exception as e:
+                print(f"경로 읽기 오류: {e}")
+
+    def update_music_list(self):
+        """폴더의 MP3 파일을 읽어 버튼으로 리스트업하는 공통 함수"""
+        if not self.Playlist_folder: return
+
+        # 기존 버튼들 제거
+        for btn in self.song_buttons.values():
+            btn.destroy()
+        self.song_buttons.clear()
+
+        try:
+            all_files = os.listdir(self.Playlist_folder)
+            self.play_list = sorted([f for f in all_files if f.lower().endswith(".mp3")])
+            
+            for song in self.play_list:
+                btn = ctk.CTkButton(self.list_frame, text=song, anchor="w", 
+                                    fg_color="transparent", hover_color="gray30",
+                                    command=lambda s=song: self.load_and_play(s))
+                self.song_buttons[song] = btn
+            
+            self.update_list_ui() # 검색 필터 적용하여 그리기
+        except Exception as e:
+            print(f"리스트 업데이트 오류: {e}")
+
     # --- 음악 제어 로직 ---
-    
     def select_playlist_folder(self):
         folder = filedialog.askdirectory(title="음악 폴더 선택")
         if folder:
             self.Playlist_folder = folder
-            # 기존 목록 초기화
-            for btn in self.song_buttons.values():
-                btn.destroy()
-            self.song_buttons.clear()
+            # 텍스트 파일에 경로 저장
+            with open("PlatList.txt", "w", encoding="utf-8") as f:
+                f.write(folder)
             
-            try:
-                all_files = os.listdir(self.Playlist_folder)
-                self.play_list = sorted([f for f in all_files if f.lower().endswith(".mp3")])
-                
-                for song in self.play_list:
-                    btn = ctk.CTkButton(self.list_frame, text=song, anchor="w", 
-                                        fg_color="transparent", hover_color="gray30",
-                                        command=lambda s=song: self.load_and_play(s))
-                    self.song_buttons[song] = btn
-                
-                self.update_list_ui()
-            except Exception as e:
-                print(f"폴더 읽기 오류: {e}")
+            self.update_music_list()
 
     def load_and_play(self, song_name):
-        """특정 곡을 로드하고 재생"""
         if not self.Playlist_folder: return
         
         path = os.path.join(self.Playlist_folder, song_name)
@@ -133,9 +162,8 @@ class App(ctk.CTk):
             self.is_playing = True
             self.current_song_index = self.play_list.index(song_name)
             self.now_playing_label.configure(text=song_name)
-            self.play_bt.configure(text="⏸") # 일시정지 아이콘으로 변경
+            self.play_bt.configure(text="⏸")
             
-            # 리스트 하이라이트 효과 (선택된 곡 색상 변경)
             for s, btn in self.song_buttons.items():
                 if s == song_name:
                     btn.configure(fg_color="gray30", text_color="#1f6aa5")
@@ -146,11 +174,9 @@ class App(ctk.CTk):
             print(f"재생 오류: {e}")
 
     def toggle_play(self):
-        """재생/일시정지 토글"""
         if not self.play_list: return
         
         if not pygame.mixer.music.get_busy() and self.current_song_index == -1:
-            # 처음 시작할 때 첫 번째 곡 재생
             self.load_and_play(self.play_list[0])
         elif self.is_playing:
             pygame.mixer.music.pause()
@@ -175,7 +201,6 @@ class App(ctk.CTk):
         pygame.mixer.music.set_volume(float(value))
 
     # --- UI 업데이트 로직 ---
-
     def on_search_change(self, *args):
         if self._search_job:
             self.after_cancel(self._search_job)
